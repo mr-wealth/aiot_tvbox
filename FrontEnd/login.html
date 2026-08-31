@@ -61,7 +61,7 @@
                     <a href="#" class="text-slate-400 hover:text-emerald-600 transition-colors">
                         Esqueceu a senha?
                     </a>
-                    <a href="#" class="font-medium text-emerald-600 hover:text-emerald-700 transition-colors">
+                    <a href="cadastro.html" class="font-medium text-emerald-600 hover:text-emerald-700 transition-colors">
                         Não tem conta? Cadastre-se
                     </a>
                 </div>
@@ -82,6 +82,10 @@
     </div>
 
     <script>
+        // Resolve the backend host dynamically, so this works whether the
+        // page is loaded via localhost, LAN IP, or Tailscale IP.
+        const API_BASE = `http://${window.location.hostname}:8000`;
+
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
             event.preventDefault();
             
@@ -96,7 +100,7 @@
             corpoRequisicao.append('password', passwordInput);
             
             try {
-                const resposta = await fetch('http://192.168.1.105:8000/auth/token', {
+                const resposta = await fetch(`${API_BASE}/auth/token`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',

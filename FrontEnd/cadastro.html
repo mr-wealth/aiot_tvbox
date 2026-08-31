@@ -33,6 +33,9 @@
     </div>
 
     <script>
+        // Resolve a API automaticamente a partir do host usado para carregar esta página.
+        const API_BASE = `http://${window.location.hostname}:8000`;
+
         document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
@@ -41,7 +44,7 @@
                 password: document.getElementById('password').value 
             };
 
-            const resposta = await fetch('http://127.0.0.1:8000/auth/cadastro', {
+            const resposta = await fetch(`${API_BASE}/auth/cadastro`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(userData)

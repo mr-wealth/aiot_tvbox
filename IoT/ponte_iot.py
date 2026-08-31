@@ -4,7 +4,7 @@ import requests
 import json
 import time
 
-API_URL = "http://127.0.0.1:8000/telemetria/"
+API_URL = "http://192.168.1.107:8000/telemetria/"
 VELOCIDADE = 115200
 
 def encontrar_todas_as_portas():
