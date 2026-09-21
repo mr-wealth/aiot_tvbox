@@ -9,7 +9,7 @@ import shap
 import os
 import requests  # 👈 1. IMPORTANTE: Adicionado para envio Web
 
-API_URL = "http://192.168.1.107:8000/telemetria/"
+API_BASE = "http://${window.location.hostname}:30000"
 VELOCIDADE = 115200
 
 # 1. Descobre a pasta exata onde este script (teste.py) está a rodar
@@ -164,7 +164,7 @@ try:
                             }
 
                             try:
-                                resposta = requests.post(API_URL, json=payload_web, timeout=2)
+                                resposta = requests.post(API_BASE, json=payload_web, timeout=2)
                                 if resposta.status_code in [200, 201]:
                                     print(f"   📡 [WEB] Enviado (HTTP {resposta.status_code})")
                                 else:
