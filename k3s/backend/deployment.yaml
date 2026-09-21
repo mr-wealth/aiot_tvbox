@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qp-backend
+  namespace: querplantar
+  labels:
+    app: qp-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qp-backend
+  template:
+    metadata:
+      labels:
+        app: qp-backend
+    spec:
+      containers:
+      - name: backend
+        image: localhost/qp_backend:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_URL
+          value: "sqlite:////data/aiot.db"
+        volumeMounts:
+        - name: sqlite-data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: sqlite-data
+        persistentVolumeClaim:
+          claimName: qp-backend-sqlite
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qp-backend
+  namespace: querplantar
+spec:
+  selector:
+    app: qp-backend
+  ports:
+  - port: 80
+    targetPort: 8000
+    nodePort: 30000
+  type: NodePort

@@ -84,7 +84,7 @@
     <script>
         // Resolve the backend host dynamically, so this works whether the
         // page is loaded via localhost, LAN IP, or Tailscale IP.
-        const API_BASE = `http://${window.location.hostname}:8000`;
+        const API_BASE = `http://${window.location.hostname}:30000`;
 
         document.getElementById('loginForm').addEventListener('submit', async (event) => {
             event.preventDefault();
