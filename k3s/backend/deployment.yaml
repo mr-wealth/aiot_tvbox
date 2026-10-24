@@ -17,8 +17,8 @@ spec:
     spec:
       containers:
       - name: backend
-        image: localhost/qp_backend:latest
-        imagePullPolicy: Never
+        image: 100.82.49.5:30500/qp_backend:v4
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8000
           name: http

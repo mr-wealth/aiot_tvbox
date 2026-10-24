@@ -289,7 +289,7 @@
     try {
         // 1. Busca APENAS as anomalias de cada horta direto da nova rota
         for (const horta of hortas) {
-            const resposta = await fetch(`http://127.0.0.1:8000/telemetria/anomalias/${horta.id}?limite=100`, {
+            const resposta = await fetch(`${API_BASE}/telemetria/anomalias/${horta.id}?limite=100`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${token}` }
             });

@@ -9,7 +9,8 @@ import shap
 import os
 import requests  # 👈 1. IMPORTANTE: Adicionado para envio Web
 
-API_BASE = "http://${window.location.hostname}:30000"
+API_BASE = "http://100.82.49.5:30000" #NodePort do backend
+TELEMETRIA_URL= f"{API_BASE}/telemetria/"
 VELOCIDADE = 115200
 
 # 1. Descobre a pasta exata onde este script (teste.py) está a rodar
@@ -164,13 +165,13 @@ try:
                             }
 
                             try:
-                                resposta = requests.post(API_BASE, json=payload_web, timeout=2)
+                                resposta = requests.post(TELEMETRIA_URL, json=payload_web, timeout=3)
                                 if resposta.status_code in [200, 201]:
-                                    print(f"   📡 [WEB] Enviado (HTTP {resposta.status_code})")
+                                    print(f"   📡 [WEB] Enviado (HTTP {resposta.status_code}) -> {resposta.josn()}")
                                 else:
-                                    print(f"   ⚠️ [WEB] Erro HTTP {resposta.status_code}")
+                                    print(f"   ⚠️ [WEB] Erro HTTP {resposta.status_code}: {resposta.text}")
                             except requests.exceptions.RequestException as req_err:
-                                print(f"   🔌 [WEB] Sem conexão com a API.")
+                                print(f"   🔌 [WEB] Sem conexão com a API: {req_err}")
 
                         except json.JSONDecodeError:
                             # Removido o 'pass' assassino. Agora ele avisa se o JSON vier quebrado!
