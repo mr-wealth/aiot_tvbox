@@ -206,12 +206,15 @@
         const token = localStorage.getItem('access_token');
         const usuario = localStorage.getItem('usuario_logado');
         let graficoInstancia = null;
+        let intervaloAtualizacaoGrafico = null;
+        let hortaGraficoAberto = null;
+        let atualizacaoGraficoEmAndamento = false;
 
-        if (!token) {
+        /*if (!token) {
             window.location.href = 'login.html';
         } else {
             document.getElementById('nomeUsuario').innerText = `👤 ${usuario}`;
-        }
+        }*/
 
         async function carregarPerfisPlantas() {
             const selectPerfil = document.getElementById('perfilHorta');
@@ -403,63 +406,91 @@
                 }
             });
 
+            if (intervaloAtualizacaoGrafico) clearInterval(intervaloAtualizacaoGrafico);
+            hortaGraficoAberto = hortaId;
+            atualizarGrafico(hortaId);
+            intervaloAtualizacaoGrafico = setInterval(() => atualizarGrafico(hortaId), 5000);
+        }
+
+        async function atualizarGrafico(hortaId) {
+            if (atualizacaoGraficoEmAndamento) return;
+            atualizacaoGraficoEmAndamento = true;
+
             try {
+                const headers = { 'Authorization': `Bearer ${token}` };
                 const respostaAtual = await fetch(`${API_BASE}/telemetria/atual/${hortaId}`, {
                     method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers
                 });
-
-                if (respostaAtual.ok) {
-                    const dadosAtuais = await respostaAtual.json();
-
-                    if (dadosAtuais.status === "ALERTA") {
-                        dadosAtuais.mensagens.forEach(msg => {
-                            const p = document.createElement('p');
-                            p.innerText = msg;
-                            listaAlertas.appendChild(p);
-                        });
-                        banner.classList.remove('hidden');
-                    }
-                }
+                if (!respostaAtual.ok) throw new Error('Erro ao buscar telemetria atual');
+                const dadosAtuais = await respostaAtual.json();
 
                 const respostaHistorico = await fetch(`${API_BASE}/telemetria/${hortaId}?limite=10`, {
                     method: 'GET',
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers
                 });
-
-                if (!respostaHistorico.ok) throw new Error('Erro ao buscar telemetria');
+                if (!respostaHistorico.ok) throw new Error('Erro ao buscar histórico de telemetria');
                 const dados = await respostaHistorico.json();
+
+                if (hortaGraficoAberto !== hortaId) return;
+
+                const banner = document.getElementById('bannerAlerta');
+                const listaAlertas = document.getElementById('listaMensagensAlerta');
+                listaAlertas.innerHTML = '';
+                if (dadosAtuais.status === 'ALERTA') {
+                    dadosAtuais.mensagens.forEach(msg => {
+                        const p = document.createElement('p');
+                        p.innerText = msg;
+                        listaAlertas.appendChild(p);
+                    });
+                    banner.classList.remove('hidden');
+                } else {
+                    banner.classList.add('hidden');
+                }
 
                 const rotulos = dados.map(d => new Date(d.data_hora).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})).reverse();
                 const temperaturas = dados.map(d => d.temperatura).reverse();
-                const luz = dados.map(d=> d.luz).reverse();
+                const luz = dados.map(d => d.luz).reverse();
                 const umidade_solo = dados.map(d => d.umidade_solo).reverse();
-                const umidade_ar = dados.map(d=> d.umidade_ar).reverse();
+                const umidade_ar = dados.map(d => d.umidade_ar).reverse();
 
-                if (graficoInstancia) graficoInstancia.destroy();
-
-                const ctx = document.getElementById('meuGrafico').getContext('2d');
-                graficoInstancia = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: rotulos,
-                        datasets: [
-                            { label: 'Temperatura (°C)', data: temperaturas, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', tension: 0.3 },
-                            { label: 'Luz', data: luz, borderColor: '#ba8e23', backgroundColor: 'rgba(255, 250, 205, 0.2)', tension: 0.3 },
-                            { label: 'Umidade do Solo (%)', data: umidade_solo, borderColor: '#654321', backgroundColor: 'rgba(196, 164, 132, 0.2)', tension: 0.3 },
-                            { label: 'Umidade do Ar', data: umidade_ar, borderColor: '#0ea5e9', backgroundColor: 'rgba(14, 165, 233, 0.1)', tension: 0.3 }
-                        ]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false }
-                });
-
+                if (graficoInstancia) {
+                    graficoInstancia.data.labels = rotulos;
+                    graficoInstancia.data.datasets[0].data = temperaturas;
+                    graficoInstancia.data.datasets[1].data = luz;
+                    graficoInstancia.data.datasets[2].data = umidade_solo;
+                    graficoInstancia.data.datasets[3].data = umidade_ar;
+                    graficoInstancia.update();
+                } else {
+                    const ctx = document.getElementById('meuGrafico').getContext('2d');
+                    graficoInstancia = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: rotulos,
+                            datasets: [
+                                { label: 'Temperatura (°C)', data: temperaturas, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', tension: 0.3 },
+                                { label: 'Luz', data: luz, borderColor: '#ba8e23', backgroundColor: 'rgba(255, 250, 205, 0.2)', tension: 0.3 },
+                                { label: 'Umidade do Solo (%)', data: umidade_solo, borderColor: '#654321', backgroundColor: 'rgba(196, 164, 132, 0.2)', tension: 0.3 },
+                                { label: 'Umidade do Ar', data: umidade_ar, borderColor: '#0ea5e9', backgroundColor: 'rgba(14, 165, 233, 0.1)', tension: 0.3 }
+                            ]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false }
+                    });
+                }
             } catch (erro) {
-                console.error('Erro ao renderizar gráfico:', erro);
+                console.error('Erro ao atualizar gráfico:', erro);
+            } finally {
+                atualizacaoGraficoEmAndamento = false;
             }
         }
 
         function fecharModal() {
             document.getElementById('modalGrafico').classList.add('hidden');
+            hortaGraficoAberto = null;
+            if (intervaloAtualizacaoGrafico) {
+                clearInterval(intervaloAtualizacaoGrafico);
+                intervaloAtualizacaoGrafico = null;
+            }
         }
 
         // Envio do Perfil de Planta
