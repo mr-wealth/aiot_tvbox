@@ -4,7 +4,7 @@ pyserial==3.5
 requests==2.32.3
 numpy==1.26.4
 pandas==2.2.3
-scikit-learn==1.5.2
+scikit-learn==1.6.1
 scipy==1.14.1
 joblib==1.4.2
 shap==0.46.0

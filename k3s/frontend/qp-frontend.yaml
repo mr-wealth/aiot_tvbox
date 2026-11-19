@@ -6,7 +6,7 @@ metadata:
   labels:
     app: qp-frontend
 spec:
-  replicas: 1
+  replicas: 2 # 👈 Alterado para 2: Uma no master, outra no worker automaticamente!
   selector:
     matchLabels:
       app: qp-frontend
@@ -15,6 +15,19 @@ spec:
       labels:
         app: qp-frontend
     spec:
+      # Garante que as réplicas fiquem em nós separados (Alta Disponibilidade real)
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - qp-frontend
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: frontend
         image: 100.82.49.5:30500/qp_frontend:v4

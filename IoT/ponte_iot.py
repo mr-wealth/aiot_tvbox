@@ -4,16 +4,16 @@ import json
 import time
 import pandas as pd
 import numpy as np
-import joblib 
+import joblib
 import shap
 import os
-import requests  # 👈 1. IMPORTANTE: Adicionado para envio Web
+import requests  # Envio Web
 
-API_BASE = "http://100.82.49.5:30000" #NodePort do backend
-TELEMETRIA_URL= f"{API_BASE}/telemetria/"
+API_BASE = "http://100.82.49.5:30000" # NodePort do backend
+TELEMETRIA_URL = f"{API_BASE}/telemetria/"
 VELOCIDADE = 115200
 
-# 1. Descobre a pasta exata onde este script (teste.py) está a rodar
+# 1. Descobre a pasta exata onde este script está a rodar
 DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
 
 # 2. Constrói o caminho seguro para entrar na pasta 'IA' e pegar o ficheiro
@@ -46,113 +46,146 @@ def aplicar_camada1(dados_sensores):
 
     if not (-10.0 <= temp <= 60.0):
         return False, f"Erro Físico Absoluto: Temperatura impossível de {temp}°C."
-        
+
     if not (0.0 <= u_ar <= 100.0):
         return False, f"Erro Físico Absoluto: Umidade do Ar impossível de {u_ar}%."
-        
+
     if not (0.0 <= u_solo <= 100.0):
         return False, f"Erro Físico Absoluto: Umidade do Solo impossível de {u_solo}%."
-        
+
     if not (0.0 <= lum <= 100.0):
         return False, f"Erro Físico Absoluto: Luminosidade impossível de {lum}%."
 
     return True, "Válido"
 
 # ==================================================
-# ROTINAS DE CONEXÃO SÉRIE
+# ROTINAS DE CONEXÃO SÉRIE COM VARREDURA AUTOMÁTICA
 # ==================================================
 def encontrar_todas_as_portas():
     portas_encontradas = []
     portas = list(serial.tools.list_ports.comports())
     for porta in portas:
-        if "Arduino" in porta.description or "CH340" in porta.description or "USB" in porta.description:
+        descricao = porta.description.lower()
+        if any(termo in descricao for termo in ["arduino", "ch340", "cp210", "usb serial", "ttyusb", "ttyacm"]):
             portas_encontradas.append(porta.device)
-    return portas_encontradas
+    return list(set(portas_encontradas))
 
 print("==================================================")
-print("🌿 Gateway de Teste Local - Modo Varredura ")
+print("🌿 Gateway IoT Inteligente - Modo Varredura Automática")
 print("==================================================")
-
-lista_de_portas = encontrar_todas_as_portas()
-if not lista_de_portas:
-    print("❌ Nenhum dispositivo IoT encontrado nas portas USB.")
-    exit(1)
 
 conexoes_ativas = {}
-for porta in lista_de_portas:
-    try:
-        conexoes_ativas[porta] = serial.Serial(porta, VELOCIDADE, timeout=0)
-        print(f"🔌 Porta {porta} conectada.")
-    except Exception as e:
-        print(f"❌ Falha ao abrir a porta {porta}: {e}")
+
+def atualizar_conexoes():
+    global conexoes_ativas
+    portas_disponiveis = encontrar_todas_as_portas()
+    
+    # Fecha conexões que sumiram fisicamente
+    for porta_ativa in list(conexoes_ativas.keys()):
+        if porta_ativa not in portas_disponiveis:
+            print(f"🔌 Porta {porta_ativa} desconectada fisicamente.")
+            try:
+                conexoes_ativas[porta_ativa].close()
+            except:
+                pass
+            del conexoes_ativas[porta_ativa]
+
+    # Abre novas portas encontradas
+    for porta in portas_disponiveis:
+        if porta not in conexoes_ativas:
+            try:
+                conexoes_ativas[porta] = serial.Serial(porta, VELOCIDADE, timeout=0.5)
+                print(f"🔌 Porta {porta} conectada.")
+            except Exception as e:
+                print(f"❌ Falha ao abrir a porta {porta}: {e}")
+
+atualizar_conexoes()
+if not conexoes_ativas:
+    print("❌ Nenhum dispositivo IoT encontrado nas portas USB. A procurar em background...")
 
 print("\n🚀 A escutar os sensores... (Pressione Ctrl+C para parar)")
 print("--------------------------------------------------")
 
 # ==================================================
-# LOOP PRINCIPAL (Leitura, Análise e Disparo Web)
+# LOOP PRINCIPAL (Leitura, Análise, Timestamps e Disparo Web)
 # ==================================================
 try:
+    contador_verificacao_portas = 0
+
     while True:
+        contador_verificacao_portas += 1
+        if contador_verificacao_portas > 30: # Reexamina portas a cada ~3 segundos
+            atualizar_conexoes()
+            contador_verificacao_portas = 0
+
+        if not conexoes_ativas:
+            time.sleep(1)
+            atualizar_conexoes()
+            continue
+
         for porta, arduino in list(conexoes_ativas.items()):
             try:
                 if arduino.in_waiting > 0:
+                    # ⏱ TIMESTAMP 1: Momento exato que o dado bruto chegou na porta serial USB
+                    t_chegada_serial = time.time()
+
                     linha = arduino.readline().decode('utf-8', errors='ignore').strip()
-                    
-                    # 🔍 DEBUG: Descomente a linha abaixo se quiser ver TUDO o que chega na porta USB
+
+                    # 🔍 DEBUG: Descomente se quiser ver TUDO o que chega bruto na serial
                     # print(f"Raw recebido: {linha}")
-                    
-                    # Usamos startswith em vez de list()[0] (é mais seguro)
+
                     if linha and linha.startswith("{"):
                         try:
                             payload = json.loads(linha)
                             id_horta = payload.get("horta_id", "Desconhecido")
-                            
-                            # 👈 MAPEAMENTO CORRIGIDO
+
                             dados_normalizados = {
                                 'Temperatura (°C)': payload.get('temperatura', 0),
-                                'Umidade do Ar (%)': payload.get('umidade_ar', 0), 
+                                'Umidade do Ar (%)': payload.get('umidade_ar', 0),
                                 'Umidade do Solo (%)': payload.get('umidade_solo', 0),
                                 'Luminosidade': payload.get('luz', 0)
                             }
-                            
+
                             valores_str = f"Temp:{dados_normalizados['Temperatura (°C)']} | U.Ar:{dados_normalizados['Umidade do Ar (%)']} | U.Solo:{dados_normalizados['Umidade do Solo (%)']} | Lum:{dados_normalizados['Luminosidade']}"
-                            
+
                             status_anomalia = False
                             causa_raiz = "Nenhuma"
-                            
+
                             # Passo 1: Camada 1 (Filtro Físico)
                             passou_camada1, motivo = aplicar_camada1(dados_normalizados)
-                            
+
                             if not passou_camada1:
                                 status_anomalia = True
                                 causa_raiz = f"Erro Físico: {motivo}"
                                 print(f"\n🛑 [CAMADA 1 - BLOQUEADO] Horta {id_horta} | Motivo: {motivo}")
-                            
+
                             elif modelo_if is not None:
                                 # Passo 2 e 3: Camada 2 (Isolation Forest) e Camada 3 (SHAP)
                                 colunas = ['Temperatura (°C)', 'Umidade do Ar (%)', 'Umidade do Solo (%)', 'Luminosidade']
                                 df_leitura = pd.DataFrame([[dados_normalizados[c] for c in colunas]], columns=colunas)
-                                
+
                                 previsao = modelo_if.predict(df_leitura)
-                                
-                                if previsao[0] == -1: 
+
+                                if previsao[0] == -1:
                                     shap_values = explainer_shap.shap_values(df_leitura)
                                     importancia = pd.Series(np.abs(shap_values[0]), index=colunas).sort_values(ascending=False)
-                                    
+
                                     sensor_culpado = importancia.index[0]
                                     peso = importancia.iloc[0]
-                                    
+
                                     status_anomalia = True
                                     causa_raiz = sensor_culpado
-                                    
+
                                     print(f"\n⚠️ [CAMADA 2 - ANOMALIA IA] Horta {id_horta} | {valores_str}")
                                     print(f"   🔍 Causa Raiz: '{sensor_culpado}' (Peso: {peso:.2f})")
                                 else:
                                     status_anomalia = False
                                     causa_raiz = "Nenhuma"
                                     print(f"✅ [NORMAL] Horta {id_horta} | {valores_str}")
-                            
+
+                            # ⏱ TIMESTAMP 2: Logo após o processamento da IA
+                            t_apos_processamento = time.time()
+
                             # 📡 INTEGRAÇÃO WEB
                             payload_web = {
                                 "horta_id": id_horta,
@@ -166,24 +199,47 @@ try:
 
                             try:
                                 resposta = requests.post(TELEMETRIA_URL, json=payload_web, timeout=3)
-                                if resposta.status_code in [200, 201]:
-                                    print(f"   📡 [WEB] Enviado (HTTP {resposta.status_code}) -> {resposta.josn()}")
+                                
+                                # ⏱ TIMESTAMP 3: Resposta da API recebida
+                                t_fim_envio = time.time()
+
+                                # Cálculo das latências em milissegundos (ms)
+                                latencia_inferencia_ms = (t_apos_processamento - t_chegada_serial) * 1000
+                                latencia_envio_ms = (t_fim_envio - t_apos_processamento) * 1000
+                                latencia_total_ms = (t_fim_envio - t_chegada_serial) * 1000
+
+                                if resposta.status_code in (200, 201):
+                                    try:
+                                        body = resposta.json()
+                                    except Exception:
+                                        body = resposta.text
+                                    print(f"   📡 [WEB] Enviado (HTTP {resposta.status_code}) -> {body}")
+                                    print(f"   ⏱ [MÉTRICA] Latência Total: {latencia_total_ms:.1f}ms (Processamento IA: {latencia_inferencia_ms:.1f}ms | Rede/API: {latencia_envio_ms:.1f}ms)")
                                 else:
                                     print(f"   ⚠️ [WEB] Erro HTTP {resposta.status_code}: {resposta.text}")
                             except requests.exceptions.RequestException as req_err:
-                                print(f"   🔌 [WEB] Sem conexão com a API: {req_err}")
+                                t_fim_envio = time.time()
+                                latencia_total_ms = (t_fim_envio - t_chegada_serial) * 1000
+                                print(f"   🔌 [WEB] Sem conexão com a API ({latencia_total_ms:.1f}ms): {req_err}")
 
                         except json.JSONDecodeError:
-                            # Removido o 'pass' assassino. Agora ele avisa se o JSON vier quebrado!
                             print(f"❌ [ERRO] JSON inválido recebido do Arduino: {linha}")
-                            
-            except serial.SerialException:
-                print(f"\n❌ [Desconectado] Placa na porta {porta} removida.")
-                del conexoes_ativas[porta]
-                
+
+            except (serial.SerialException, OSError) as e:
+                print(f"\n❌ [Desconectado] Placa na porta {porta} removida ou com falha I/O: {e}")
+                if porta in conexoes_ativas:
+                    try:
+                        conexoes_ativas[porta].close()
+                    except:
+                        pass
+                    del conexoes_ativas[porta]
+
         time.sleep(0.1)
 
 except KeyboardInterrupt:
     print("\n🛑 Gateway de teste encerrado.")
     for arduino in conexoes_ativas.values():
-        arduino.close()
+        try:
+            arduino.close()
+        except:
+            pass

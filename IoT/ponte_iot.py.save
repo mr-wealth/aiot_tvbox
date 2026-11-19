@@ -1,0 +1,81 @@
+import serial
+import serial.tools.list_ports
+import json
+import time
+import pandas as pd
+import numpy as np
+import joblib
+import shap
+import os
+import requests  # 👈 1. IMPORTANTE: Adicionado para envio Web
+
+API_BASE = "http://100.82.49.5:30000" #NodePort do backend
+TELEMETRIA_URL= f"{API_BASE}/telemetria/"
+VELOCIDADE = 115200
+
+# 1. Descobre a pasta exata onde este script (teste.py) está a rodar
+DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
+
+# 2. Constrói o caminho seguro para entrar na pasta 'IA' e pegar o ficheiro
+CAMINHO_MODELO = os.path.join(DIRETORIO_ATUAL, 'IA', 'modelo_isolation_forest.joblib')
+
+# ==================================================
+# 🧠 INICIALIZAÇÃO DA IA (Carregamento do Cérebro)
+# ==================================================
+print("==================================================")
+print("🧠 A iniciar o Motor de Inteligência Artificial...")
+try:
+    modelo_if = joblib.load(CAMINHO_MODELO)
+    explainer_shap = shap.TreeExplainer(modelo_if)
+    print("✅ IA Carregada com sucesso! Pronta para análise local.")
+except Exception as e:
+    print(f"⚠️ AVISO: Não foi possível carregar o modelo de IA. O ficheiro está na pasta correta? Erro: {e}")
+    modelo_if = None
+
+def aplicar_camada1(dados_sensores):
+    """ Filtros Físicos Absolutos (O Segurança do Edge) """
+    sensores_esperados = ['Temperatura (°C)', 'Umidade do Ar (%)', 'Umidade do Solo (%)', 'Luminosidade']
+    for sensor in sensores_esperados:
+        if sensor not in dados_sensores or dados_sensores[sensor] is None:
+            return False, f"Hardware/Rede: Leitura do sensor '{sensor}' falhou ou está vazia."
+
+    temp = dados_sensores['Temperatura (°C)']
+    u_ar = dados_sensores['Umidade do Ar (%)']
+    u_solo = dados_sensores['Umidade do Solo (%)']
+    lum = dados_sensores['Luminosidade']
+
+    if not (-10.0 <= temp <= 60.0):
+        return False, f"Erro Físico Absoluto: Temperatura impossível de {temp}°C."
+        
+    if not (0.0 <= u_ar <= 100.0):
+        return False, f"Erro Físico Absoluto: Umidade do Ar impossível de {u_ar}%."
+        
+    if not (0.0 <= u_solo <= 100.0):
+        return False, f"Erro Físico Absoluto: Umidade do Solo impossível de {u_solo}%."
+        
+    if not (0.0 <= lum <= 100.0):
+        return False, f"Erro Físico Absoluto: Luminosidade impossível de {lum}%."
+
+    return True, "Válido"
+
+# ==================================================
+# ROTINAS DE CONEXÃO SÉRIE
+# ==================================================
+def encontrar_todas_as_portas():
+    portas_encontradas = []
+    portas = list(serial.tools.list_ports.comports())
+    for porta in portas:
+        if "Arduino" in porta.description or "CH340" in porta.description or "USB" in porta.description:
+            portas_encontradas.append(porta.device)
+    return portas_encontradas
+
+print("==================================================")
+print("🌿 Gateway de Teste Local - Modo Varredura ")
+print("==================================================")
+
+lista_de_portas = encontrar_todas_as_portas()
+if not lista_de_portas:
+    print("❌ Nenhum dispositivo IoT encontrado nas portas USB.")
+    exit(1)
+
+
